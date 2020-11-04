@@ -31,7 +31,7 @@ dishRouter.use(bodyParser.json()); //the body of the request message will be in 
 dishRouter.route('/')  //mounting this express router in the index.js file. In index.js file, this router is mount  at the /dishes endpoint
 .get((req, res, next) => {
      Dishes.find({})
-    .then((dishes) => { //returns a collection which is an array of dishes
+    .then((dishes) => { //returns a collection which is an array of all existing dishes
        res.statusCode = 200;
        res.setHeader('Content-Type', 'application/json');
        res.json(dishes); //convert the array of dishes to json format

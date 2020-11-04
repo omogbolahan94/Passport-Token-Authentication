@@ -13,13 +13,12 @@ var promoRouter = require('./routes/promoRouter');
 //establish a connection with the MongoDB server that is running in the background using the mongoose
 const mongoose = require('mongoose');
 const Dishes = require('./models/dishes');
-
 const url = 'mongodb://localhost:27017/confusion'; //the address of the MOngoDB database that is running
 const connect = mongoose.connect(url);
 
 connect.then(
   (db) => { //resolve function
-    console.log(db, "Connected to the server");
+    console.log("Connected to the server");
   },
   (err) => {//reject function
     console.log(err);
