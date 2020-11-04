@@ -1,32 +1,48 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+var createError = require('http-errors'); 
+var express = require('express'); 
+var path = require('path'); 
+var cookieParser = require('cookie-parser'); 
+var logger = require('morgan'); 
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+var indexRouter = require('./routes/index'); 
+var usersRouter = require('./routes/users'); 
 var dishRouter = require('./routes/dishRouter');
 var leaderRouter = require('./routes/leaderRouter');
 var promoRouter = require('./routes/promoRouter');
 
-var app = express();
+//establish a connection with the MongoDB server that is running in the background using the mongoose
+const mongoose = require('mongoose');
+const Dishes = require('./models/dishes');
 
-// view engine setup
+const url = 'mongodb://localhost:27017/confusion'; //the address of the MOngoDB database that is running
+const connect = mongoose.connect(url);
+
+connect.then(
+  (db) => { //resolve function
+    console.log(db, "Connected to the server");
+  },
+  (err) => {//reject function
+    console.log(err);
+  })
+
+
+var app = express(); 
+
+// view engine setup 
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
+app.use(logger('dev')); 
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: false })); 
+app.use(cookieParser()); 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
-app.use('/dishes', dishRouter);
-app.use('/promotions', promoRouter);
-app.use('/leaders', leaderRouter);
+app.use('/', indexRouter); 
+app.use('/users', usersRouter); 
+app.use('/dishes', dishRouter); //any request coming to the /dishes will be handled by the dishRouter
+app.use('/promotions', promoRouter); //any request coming to the /promotions will be handled by the promotionsRouter
+app.use('/leaders', leaderRouter); //any request coming to the /leaders will be handled by the leadersRouter
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
