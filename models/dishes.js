@@ -29,7 +29,7 @@ const dishSchema = new Schema({
     name: {//name field
         type: String,
         required: true,
-        unigue: true //no 2 documents in a collection should have te same name
+        unigue: true //no 2 documents in a collection should have be same name
     },
     description: {
         type: String,
