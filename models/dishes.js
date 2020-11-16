@@ -16,9 +16,9 @@ const commentSChema = new Schema({
         type: String,
         required: true,
     },
-    author: {
-        type: String,
-        required: true,
+    author: {//referencing a User document by ID. Then in dishRouter we wil use mongoose to populate the this Dish with the user document
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'User' //the document we want tlo reference
     }
   }, 
   {timestamps: true} //timestamps is a document on its own
@@ -29,7 +29,7 @@ const dishSchema = new Schema({
     name: {//name field
         type: String,
         required: true,
-        unigue: true //no 2 documents in a collection should have be same name
+        unigue: true //no 2 documents in a collection should have been same name
     },
     description: {
         type: String,

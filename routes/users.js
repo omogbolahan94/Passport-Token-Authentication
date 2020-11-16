@@ -1,92 +1,67 @@
 var express = require('express');
 const bodyParser = require('body-parser');
 const User = require('../models/user');
+const passport = require('passport');
+var authenticate = require('../authenticate');
 
 var router = express.Router();
 
 /* GET users listing. */
-router.get('/', function(req, res, next) {
-  res.send('respond with a resource');
+router.get('/', authenticate.verifyUser, authenticate.verifyAdmin, function(req, res, next) {
+  User.find({})
+  .then((users) => { 
+     res.statusCode = 200;
+     res.setHeader('Content-Type', 'application/json');
+     res.json(users); 
+  }, (err) => { next(err) })
+  .catch( (err) => next(err) );
+  //res.send('respond with a resource');
 });
 
 
-//the user name is provided as a json string inside the body of the incoming request
-//note that this body of the request is being passed by the body-parser
-//we will check that the user with the username doesn't exists within the systems
 
+//the register method is provided by the passport-local-mongoose to create a user document 
 router.post('/signup', (req, res, next) => {
-    User.findOne({username: req.body.username})
-    .then((user) => {
-        if(user !== null) { ////if the username of the user is not null, that means the user already exists(no 2 users must have the same username)
-            var err = new Error('User ' + req.body.username + ' already exists');
-            err.status = 403;
-            next(err); 
-        }
-        else {
-          return User.create({
-              username: req.body.username,
-              password: req.body.password
-          });
-        }; //this returns a promise to be verified
-    })
-    .then((user) => { //user will be a JSON object {username:req.body.username, password:req.body.password, _id:base64 String, admin:false} which becomes a record in MongoDB
-        res.statusCode = 200;
+    User.register(new User({username: req.body.username}), req.body.password, (err, user) => {
+      if(err) {
+        res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
-        res.json({status: "Registration successful", user: user}) //loading the user as a property in the reply message which is optional though 
-    }, (err) => next(err) )
-    .catch((err) => next(err))
+        res.json({err: err});
+      }
+      else {
+        if(req.body.firstname) {
+          user.firstname = req.body.firstname; //fill the firstname field of this user document through the body of req message
+        }
+        if(req.body.lastname) {
+          user.lastname = req.body.lastname; //fill the lastname field of this user document through the body of req message
+        }
+        user.save((err, user) => {
+          if(err) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.json({err: err});
+            return;
+          }
+          passport.authenticate('local')(req, res, () => { //authenticate the user to ensuyre successful registration of the user
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json({success: true, status: 'Registrastion Successful!'});
+          });
+        });
+      }
+    });
 });
 
 //TRACKING THE USER BY CHECKING THEIR AUTHENTICATION. 
-router.post('/login', (req, res, next) => {
-
-  if(!req.session.user) { //if cookie for user sesion has not been set up, and and set it up once user logged in successfully
-    var authHeader = req.headers.authorization; 
-
-    if(!authHeader) {  //if authorization property of the req headers is null, it means the user has not entered the username and the password fields
-        var err = new Error('You are not authorized!') ;
-
-        res.setHeader('WWW-Authenticate', 'Basic'); 
-        err.status = 401; 
-        next(err); 
-        return;
-    }
-
-    //authHeader = Authorization: Basic encoded-string-in-Base64
-    //authHeader.split(' ') = ['Basic', encoded-string-in-Base64]
-    //authHeader.split(' ')[1].toString() = "userName:password"
-    var auth = new Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':'); //[userName, Password]    
-    var username = auth[0];
-    var password = auth[1];
-
-    //search if the user name of a particular user document already exists(has been created on the User collection) in the User collection in database
-    User.findOne({username: username}) //return a document in User collection with the username property as the value of the username retrieved from the headers authorization property
-    .then((user) => { //returns a document of the User collection bassed on the username specified above
-        if(user === null) {
-          var err = new Error('User ' + username + ' does not exists');
-          err.status = 403; 
-          next(err);
-        }
-        else if (user.password !== password) { //check if password is correct if user already entered the correct username
-          var err = new Error('Your password is incorrect');
-          err.status = 401; 
-          next(err);
-        }
-        else if(user.username === username && user.password === password) { //this else if statement is not necessary
-            req.session.user = 'authenticated'; //setting the  cookie for this user 
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/plain');
-            res.end('You are authenticated'); 
-        } 
-    })
-    .catch((err) => next(err))  
+//After the user signed up, they should login with their username and password. on logging in, a token will be assigned to them
+//passport.authenticate will mount user property on the request message(req.user) to authenticate the valid user
+router.post('/login', passport.authenticate('local'), (req, res) => { 
+  var token = authenticate.getToken({_id: req.user._id}); //getting the id of the authenticated user(payload) and assign a token to it
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json');
+  res.json({success: true, token: token, status: 'You are successfully logged in!'});
   }
-  else { //we dont need to verify if the user has already logged in i.e req.session.user !== null
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/plain');
-      res.end('You are already authenticated'); 
-  }
-});
+);
 
 //used for deleting the cookie that is stored on the client side
 router.get('/logout', (req, res, next) => {

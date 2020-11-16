@@ -18,19 +18,24 @@ const express = require('express'),
 
 //making the dishRouter to interact with the MongoDB server using mongoose
 const mongoose = require('mongoose');
+const authenticate = require('../authenticate');
+
 const Dishes = require('../models/dishes') //Dishes here becomes a collection in our database
       
 
 const dishRouter = express.Router();
 dishRouter.use(bodyParser.json()); //the body of the request message will be in JSON format
 
-//Modification is not done on this root directory so we cannot use the PUT method
-//I will handle each of the GET, POST, PUT and DELETE independently(so i wont use .all)
-//Every documents in a database collection has a unique id
-//each sub-document in a particular  field of a collection also has a unique i
+
+
+//for REST API, we will open the GET operation for anybody but the POST, PUT and DELETE  
+//operations will be restricted to authenticated users only
+//this restriction is possible by the verifyUser function in authenticate.js
+//comments.author knows the user document that will populate it because when it was assigned a token(which is used anywhere) to it based on the user id
 dishRouter.route('/')  //mounting this express router in the index.js file. In index.js file, this router is mount  at the /dishes endpoint
 .get((req, res, next) => {
      Dishes.find({})
+    .populate('comments.author') //populate the author field of Dishes here with the User document before replying the client
     .then((dishes) => { //returns a collection which is an array of all existing dishes
        res.statusCode = 200;
        res.setHeader('Content-Type', 'application/json');
@@ -38,13 +43,13 @@ dishRouter.route('/')  //mounting this express router in the index.js file. In i
     }, (err) => { next(err) })
     .catch( (err) => next(err) );
 })
-.post((req, res, next) => {
+.post(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
      Dishes.create(req.body) //document created is on the body of the request and then post to the server request(req.body)
     .then((dish) => { //returns a dish object
-      console.log('Dish created ', dish);
-       res.statusCode = 200;
-       res.setHeader('Content-Type', 'application/json');
-       res.json(dish); //convert the array of dishes to json format
+        console.log('Dish created ', dish);
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.json(dish); //convert the array of dishes to json format
     }, (err) => { next(err) })
     .catch( (err) => next(err) );
 })
@@ -52,7 +57,7 @@ dishRouter.route('/')  //mounting this express router in the index.js file. In i
     res.statusCode = 403;
     res.end('PUT operation is not supported on /dishes');
 })
-.delete((req, res, next) => {
+.delete(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
      Dishes.remove({}) //returns a response to be resolved when dishes are deleted
     .then((resp) => { 
        res.statusCode = 200;
@@ -66,6 +71,7 @@ dishRouter.route('/')  //mounting this express router in the index.js file. In i
 dishRouter.route('/:dishId') //where the dishId is the special key generated for a particular document in our Dishes collection
 .get( (req, res, next) => {
     Dishes.findById(req.params.dishId)
+    .populate('comments.author') //populate the author field of comments with the user decument before replying the client 
     .then((dish) => {
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
@@ -77,7 +83,7 @@ dishRouter.route('/:dishId') //where the dishId is the special key generated for
     res.statusCode = 403;
     res.end('POST operation is not supported on /dishes/' + req.params.dishId);
 })
-.put( (req, res, next) => {
+.put(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
     Dishes.findByIdAndUpdate(req.params.dishId, {$set: req.body}, {new: true}) //update and return the updated document
     .then((dish) => {
         res.statusCode = 200;
@@ -86,7 +92,7 @@ dishRouter.route('/:dishId') //where the dishId is the special key generated for
     }, (err) => { next(err) })
     .catch( (err) => next(err) );
 })
-.delete( (req, res, next) => {
+.delete(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
     Dishes.findByIdAndRemove(req.params.dishId)
     .then((resp) => { 
       res.statusCode = 200;
@@ -97,40 +103,46 @@ dishRouter.route('/:dishId') //where the dishId is the special key generated for
 });
 
 
-/*this is a route to the sub-documents in the  commentns field of the Dishes collectiuon */
+/*this is a route to the sub-documents in the  commentns field of the Dishes collection */
 dishRouter.route('/:dishId/comments')  
 .get((req, res, next) => {
      Dishes.findById(req.params.dishId) //retrieve the document with this dishId
-    .then((dish) => { 
-       if (dish !== null) { //if the id does not exist, then dish does not exist and this will return null
-          res.statusCode = 200;
-          res.setHeader('Content-Type', 'application/json');
-          res.json(dish.comments); //return the comments field which is a field that returns list of sub-documents(list of comments document)
-       }
-       else {
-          err = new Error("Dish " + req.params.dishId + " Not Found");
-          err.status = 404;
-          return next(err); //this is hanfdles by the error handler in app.js
-       }
-    }, (err) => next(err)) 
+     .populate('comments.author') //populate the author field of comments with the user decument before replying the client 
+     .then((dish) => { 
+        if (dish !== null) { 
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json(dish.comments); //return the comments field which is a field that returns list of sub-documents(list of comments document)
+        }
+        else {
+            err = new Error("Dish " + req.params.dishId + " Not Found");
+            err.status = 404;
+            return next(err); //this is handles by the error handler in app.js
+        }
+     }, (err) => next(err)) 
     .catch( (err) => next(err) );
 })
-.post((req, res, next) => {
+.post(authenticate.verifyUser, (req, res, next) => {//when a user is verified, a property user is added to request. this user property is an object litersl with an _id property which is unique to that verified user
      Dishes.findById(req.params.dishId) 
     .then((dish) => { //returns a dish object
        if(dish !== null) {
+          req.body.author = req.user._id;//recall author ref the user by the _id tht's posting the comment. Remember we have verified the user with authenticate.verifyUser method in the post function 
           dish.comments.push(req.body);
           dish.save()
           .then((dish) => {
-              res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/json');
-              res.json(dish);
+              Dishes.findById(dish._id)
+              .populate('comments.author') //populating the author's information to the dish
+              .then((dish) => {
+                res.statusCode = 200;
+                res.setHeader('content-type', 'application/json');
+                res.json(dish);
+              })   
           })
        }
        else {
           err = new Error("Dish " + req.params.dishId + " Not Found");
           err.status = 404;
-          return next(err); //this is hanfdles by the error handler in app.js
+          return next(err); //this is handled by the error handler in app.js
        }
     }, (err) => { next(err) })
     .catch( (err) => next(err) );
@@ -139,7 +151,7 @@ dishRouter.route('/:dishId/comments')
     res.statusCode = 403;
     res.end('PUT operation is not supported on /dishes/' + req.params.dishId + '/comments');
 })
-.delete( (req, res, next) => {
+.delete(authenticate.verifyUser, (req, res, next) => {
     Dishes.findById(req.params.dishId)
     .then((dish) => {
       if(dish !== null) {
@@ -167,6 +179,7 @@ dishRouter.route('/:dishId/comments')
 dishRouter.route('/:dishId/comments/:commentId')
 .get( (req, res, next) => {
   Dishes.findById(req.params.dishId)
+  .populate('comments.author') //
   .then((dish) => { 
      if (dish !== null && dish.comments.id(req.params.commentId) !== null) { 
         res.statusCode = 200;
@@ -190,10 +203,15 @@ dishRouter.route('/:dishId/comments/:commentId')
     res.statusCode = 403;
     res.end('POST operation is not supported on /dishes/' + req.params.dishtId + '/comments/' + req.params.commentId);
 })
-.put( (req, res, next) => {
+.put(authenticate.verifyUser, (req, res, next) => {
   Dishes.findById(req.params.dishId)
   .then((dish) => {   //allowing client to update only the rating and comment fields
       if (dish !== null && dish.comments.id(req.params.commentId) !== null) { 
+          if (dish.comments.id(req.params.commentId).author.toString() !== req.user._id.toString()) {
+            err = new Error("You are not authorized to modify this comment");
+            err.status = 404;
+            return next(err);
+          }
           if(req.body.rating) {
             dish.comments.id(req.params.commentId).rating = req.body.rating; //updating the rating field
           }
@@ -203,9 +221,13 @@ dishRouter.route('/:dishId/comments/:commentId')
       
           dish.save()
           .then((dish) => {
-              res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/json');
-              res.json(dish); 
+              Dishes.findById(dish._id)
+              .populate('comments.author')
+              .then((dish) => {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.json(dish); 
+              })
           }, (err) => next(err))
       }
       else if(dish === null){
@@ -216,23 +238,32 @@ dishRouter.route('/:dishId/comments/:commentId')
       else {
           err = new Error("Comment " + req.params.commentId + " Not Found");
           err.status = 404;
-          return next(err); //this is hanfdles by the error handler in app.js
+          return next(err); //this is handled by the error handler in app.js
       }
   }, (err) => next(err)) 
   .catch( (err) => next(err) );
 })
-.delete( (req, res, next) => { //deleting a specific comment
-  Dishes.findByIdAndRemove(req.params.dishId)
+.delete(authenticate.verifyUser, (req, res, next) => { //deleting a specific comment
+  Dishes.findById(req.params.dishId)
   .then((dish) => {
     if(dish !== null && dish.comments.id(req.params.commentId) !== null) {
+        if (dish.comments.id(req.params.commentId).author.toString() !== req.user._id.toString()) {
+            err = new Error("You are not authorized to modify this comment");
+            err.status = 404;
+            return next(err);
+          }
         dish.comments.id(req.params.commentId).remove(); //each document in the comments array also has a unique id
       
        //to indicate the updated dish being returned afetr deleting all the documents in comments of dish
        dish.save()
        .then((dish) => {
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.json(dish);
+            Dishes.findById(dish._id)
+            .populate('comments.author') 
+            .then((dish) => {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.json(dish); 
+            })
         }, (err) => next(err));  
     }
     else if(dish === null){
@@ -243,7 +274,7 @@ dishRouter.route('/:dishId/comments/:commentId')
     else {
         err = new Error("Comment " + req.params.commentId + " Not Found");
         err.status = 404;
-        return next(err); //this is hanfdles by the error handler in app.js
+        return next(err); //this is handled by the error handler in app.js
     }
   }, (err) => { next(err) })
   .catch( (err) => next(err) );
